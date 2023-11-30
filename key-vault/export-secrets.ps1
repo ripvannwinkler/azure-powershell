@@ -12,6 +12,6 @@ $secretNames = $(az keyvault secret list --vault-name $fromVault) | ConvertFrom-
 
 $secretNames | ForEach-Object {
 	$secret = $(az keyvault secret show --name $_.name --vault-name $fromVault -o json) | ConvertFrom-Json
-	Write-Output "az keyvault secret set --vault-name $toVault --name `"$($_.name)`" --value `"$($secret.value)`" --output none"
+	Write-Output "az keyvault secret set --vault-name $toVault --name $($_.name) --value `"$($secret.value)`" --output none"
 }
 
