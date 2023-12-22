@@ -1,11 +1,12 @@
+<#
+	SYNOPSIS: Exports all secrets from a key vault to the console
+
+	Given a key vault name, this script will export all secrets from the vault and print them to the console.
+#>
 Param(
 	[Parameter(Mandatory)]
 	# the vault to export secrets from
-	[string]$fromVault,
-
-	[Parameter(Mandatory = $false)]
-	# the vault to import secrets to
-	[string]$toVault = "destination-vault-name"
+	[string]$fromVault
 )
 
 
@@ -27,5 +28,5 @@ Write-Output "To import the secrets to another vault, run the following commands
 Write-Output ""
 
 $secrets | ForEach-Object {
-	Write-Output "az keyvault secret set --vault-name $toVault --name $($_.Name) --value `"$($_.Value)`""
+	Write-Output "az keyvault secret set --vault-name `$vaultName --name $($_.Name) --value `"$($_.Value)`""
 }
