@@ -13,10 +13,9 @@ param(
 	# Include N previous days in the search
 	[int]$pastDays = 1,
 	# Output results to this file (.csv)
-	[string] $outputFile = "\audit-.csv"
+	[string] $outputFile = "data/audit-.csv"
 )
 
-# Check powershell version
 function CheckPowershellVersion()
 {
 	$majorVersion = $PSVersionTable.PSVersion.Major
@@ -64,6 +63,87 @@ function ConnectExchange()
 	return $true
 }
 
+function ExportLogs()
+{
+	# Append report timestamp to output file name
+	$timestamp = (Get-Date).ToString("yyyyMMddHHmmss")
+	$outputFile = $script:outputFile
+	$outputFile = [IO.Path]::GetFullPath($outputFile.Replace(".csv", "$timestamp.csv"))
+
+	# Create output directory if it does not exist
+	$outputDir = Split-Path $outputFile -Parent
+	New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+
+	# Determine search period and interval The maximum search period is 90 days.
+	# There is a limit of 5000 records per request. To avoid this limit, we use a
+	# loop with a 60 minute interval
+	$start = [DateTime]::UtcNow.AddDays(-$pastDays)
+	$end = [DateTime]::UtcNow
+	$record = $null
+	$resultSize = 5000
+	$intervalMinutes = 60
+
+	Write-Host "Start exporting audit logs; start=$($start); end=$($end)"
+	Write-Host "Exporting to file: $outputFile"
+
+	# Start retrieving audit records
+	$currentStart = $start
+	$currentEnd = $end
+	$totalCount = 0
+
+	while ($true)
+	{
+		# Increment interval, stop at end date
+		$currentEnd = $currentStart.AddMinutes($intervalMinutes)
+		$currentEnd = $(if ($currentEnd -gt $end) { $end } else { $currentEnd })
+
+		# Nothing left to retrieve
+		if ($currentStart -eq $currentEnd)
+		{
+			break
+		}
+
+		# Export records for the current session
+		$sessionID = [Guid]::NewGuid().ToString() + "_" + "ExtractLogs" + (Get-Date).ToString("yyyyMMddHHmmssfff")
+		$currentCount = 0
+
+		do
+		{
+			$results = Search-UnifiedAuditLog `
+				-StartDate $currentStart `
+				-EndDate $currentEnd `
+				-RecordType $record `
+				-SessionId $sessionID `
+				-SessionCommand ReturnLargeSet `
+				-ResultSize $resultSize
+
+			if (($results | Measure-Object).Count -gt 0)
+			{
+				# Append results to the output file
+				$results | export-csv -Path $outputFile -Append -NoTypeInformation
+				$currentTotal = $results[0].ResultCount
+				$currentCount += $results.Count
+				$totalCount += $results.Count
+
+				# Break out of the loop if we have retrieved all records
+				if ($currentTotal -eq $results[$results.Count - 1].ResultIndex)
+				{
+					Write-Host "Exported $($currentTotal) records from $currentStart to $currentEnd"
+					break
+				}
+			}
+		}
+
+		# Break if there are no more records to retrieve
+		while (($results | Measure-Object).Count -gt 0)
+
+		# Move to the next interval
+		$currentStart = $currentEnd
+	}
+
+	Write-Host "Finished exporting $totalCount records between $($start) and $($end)." -foregroundColor Green
+}
+
 if (!(CheckPowershellVersion))
 {
 	Write-Host "This script requires PowerShell Core 7 or later" -foregroundColor Red
@@ -76,76 +156,4 @@ if (!(ConnectExchange))
 	Exit
 }
 
-# Append report timestamp to output file name
-$timestamp = (Get-Date).ToString("yyyyMMddHHmmss")
-$outputFile = $outputFile.Replace(".csv", "$timestamp.csv")
-
-# Determine search period and interval The maximum search period is 90 days.
-# There is a limit of 5000 records per request. To avoid this limit, we use a
-# loop with a 60 minute interval
-$start = [DateTime]::UtcNow.AddDays(-$pastDays)
-$end = [DateTime]::UtcNow
-$record = $null
-$resultSize = 5000
-$intervalMinutes = 60
-
-Write-Host "Start exporting audit logs; start=$($start); end=$($end)"
-
-# Start retrieving audit records
-$currentStart = $start
-$currentEnd = $end
-$totalCount = 0
-
-while ($true)
-{
-	# Increment interval, stop at end date
-	$currentEnd = $currentStart.AddMinutes($intervalMinutes)
-	$currentEnd = $(if ($currentEnd -gt $end) { $end } else { $currentEnd })
-
-	# Nothing left to retrieve
-	if ($currentStart -eq $currentEnd)
-	{
-		break
-	}
-
-	# Export records for the current session
-	Write-Host "Exporting from $($currentStart) to $($currentEnd)"
-	$sessionID = [Guid]::NewGuid().ToString() + "_" + "ExtractLogs" + (Get-Date).ToString("yyyyMMddHHmmssfff")
-	$currentCount = 0
-
-
-	do
-	{
-		$results = Search-UnifiedAuditLog `
-			-StartDate $currentStart `
-			-EndDate $currentEnd `
-			-RecordType $record `
-			-SessionId $sessionID `
-			-SessionCommand ReturnLargeSet `
-			-ResultSize $resultSize
-
-		if (($results | Measure-Object).Count -gt 0)
-		{
-			# Append results to the output file
-			$results | export-csv -Path $outputFile -Append -NoTypeInformation
-			$currentTotal = $results[0].ResultCount
-			$currentCount += $results.Count
-			$totalCount += $results.Count
-
-			# Break out of the loop if we have retrieved all records
-			if ($currentTotal -eq $results[$results.Count - 1].ResultIndex)
-			{
-				Write-Host "Successfully exported $($currentTotal) audit records..."
-				break
-			}
-		}
-	}
-
-	# Break if there are no more records to retrieve
-	while (($results | Measure-Object).Count -gt 0)
-
-	# Move to the next interval
-	$currentStart = $currentEnd
-}
-
-Write-Host "Finished exporting $totalCount records between $($start) and $($end)." -foregroundColor Green
+ExportLogs
