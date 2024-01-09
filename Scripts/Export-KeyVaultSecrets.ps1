@@ -1,20 +1,22 @@
 <#
-	SYNOPSIS: Exports all secrets from a key vault to the console
 
-	Given a key vault name, this script will export all secrets from the vault and print them to the console.
+.SYNOPSIS
+		Exports secrets from a key vault to the console
+
 #>
+
 Param(
-	[Parameter(Mandatory)]
 	# the vault to export secrets from
-	[string]$fromVault
+	[Parameter(Mandatory)]
+	[string]$vaultName
 )
 
 
-$secretNames = $(az keyvault secret list --vault-name $fromVault) | ConvertFrom-Json | Select-Object -Property name
+$secretNames = $(az keyvault secret list --vault-name $vaultName) | ConvertFrom-Json | Select-Object -Property name
 
 $secrets = @()
 $secretNames | ForEach-Object {
-	$secret = $(az keyvault secret show --name $_.name --vault-name $fromVault -o json) | ConvertFrom-Json
+	$secret = $(az keyvault secret show --name $_.name --vault-name $vaultName -o json) | ConvertFrom-Json
 	$secrets += [PSCustomObject]@{
 		Name  = $_.name
 		Value = $secret.value
