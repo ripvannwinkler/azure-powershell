@@ -1,7 +1,8 @@
 Unregister-ScheduledTask -TaskName uptime
 $tt = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval 0:01
 $ta = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-File C:\uptime.ps1"
-Register-ScheduledTask -Action $ta -Trigger $tt -TaskName "uptime" -Description "Ping the uptime monitor"
+$tp = New-ScheduledTaskPrincipal -UserId "LOCALSERVICE" -LogonType ServiceAccount
+Register-ScheduledTask -Principal $tp -Action $ta -Trigger $tt -TaskName "uptime" -Description "Ping the uptime monitor"
 
 $events = @(
 	Get-WinEvent  -FilterXml @'
